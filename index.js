@@ -127,17 +127,18 @@ export function parseCookies(header) {
 
 // A returnUrl is trusted for loginUrl() if its origin is https and its host
 // is exactly `l42.eu` or a subdomain of it — the same origin-suffix rule
-// aithne applies to /auth/remint (aithne ADR-0003 Amendment 2026-06-23).
+// aithne applies to /auth/remint (aithne ADR-0003 Amendment 2026-06-23) —
+// or if it matches the consumer's own injected appOrigin (see below).
 const L42_SUFFIX_ORIGIN = /^https:\/\/([a-z0-9]([a-z0-9-]*[a-z0-9])?\.)*l42\.eu$/;
 
-function isTrustedReturnUrl(returnUrl, origin) {
+function isTrustedReturnUrl(returnUrl, appOrigin) {
 	let url;
 	try {
 		url = new URL(returnUrl);
 	} catch {
 		return false;
 	}
-	if (url.origin === origin) return true;
+	if (appOrigin && url.origin === appOrigin) return true;
 	return L42_SUFFIX_ORIGIN.test(url.origin);
 }
 
@@ -150,6 +151,13 @@ function isTrustedReturnUrl(returnUrl, origin) {
  *                            (does NOT affect the issuer check or loginUrl(), both
  *                            of which derive from `origin` — this invariant is a
  *                            security property, not a convenience)
+ *   appOrigin               optional — this consumer's own origin (e.g.
+ *                            'https://notes.l42.eu' in prod, 'http://localhost:3005'
+ *                            in dev). Trusted as a loginUrl() return target in
+ *                            addition to the *.l42.eu suffix rule below, so a
+ *                            dev consumer running on a non-l42.eu localhost origin
+ *                            still gets a working next= round-trip. Omit it and
+ *                            only the *.l42.eu suffix rule applies.
  *   audience                default 'l42.eu'
  *   clockToleranceSeconds   default 30
  *   environment              gates the dev-only render-ui scope bypass; the
@@ -159,6 +167,7 @@ function isTrustedReturnUrl(returnUrl, origin) {
 export function createAithneClient(config = {}) {
 	const origin = config.origin ?? 'https://aithne.l42.eu';
 	const jwksUrl = new URL(config.jwksUrl ?? `${origin}/.well-known/jwks.json`);
+	const appOrigin = config.appOrigin;
 	const issuer = origin;
 	const audience = config.audience ?? 'l42.eu';
 	const clockTolerance = config.clockToleranceSeconds ?? 30;
@@ -239,12 +248,13 @@ export function createAithneClient(config = {}) {
 
 	/**
 	 * Build the aithne login URL, embedding a validated `next=` return URL.
-	 * A returnUrl that fails validation (wrong origin, not *.l42.eu, not a
-	 * valid URL) is dropped — loginUrl() never redirects to an untrusted
-	 * destination; it just omits next= and returns a bare login URL.
+	 * A returnUrl that fails validation (not on the injected appOrigin, not
+	 * *.l42.eu, not a valid URL) is dropped — loginUrl() never redirects to
+	 * an untrusted destination; it just omits next= and returns a bare login
+	 * URL.
 	 */
 	function loginUrl(returnUrl) {
-		if (returnUrl && isTrustedReturnUrl(returnUrl, origin)) {
+		if (returnUrl && isTrustedReturnUrl(returnUrl, appOrigin)) {
 			return `${origin}/auth/login?next=${encodeURIComponent(returnUrl)}`;
 		}
 		return `${origin}/auth/login`;

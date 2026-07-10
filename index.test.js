@@ -133,7 +133,7 @@ describe('loginUrl', () => {
 		assert.equal(aithne.loginUrl(), 'https://aithne.l42.eu/auth/login');
 	});
 
-	it('embeds a returnUrl on the configured origin', () => {
+	it('embeds a returnUrl on aithne\'s own l42.eu subdomain (matches via the *.l42.eu suffix rule, not an origin===origin special case)', () => {
 		const aithne = createAithneClient({ origin: 'https://aithne.l42.eu' });
 		const url = aithne.loginUrl('https://aithne.l42.eu/some/page');
 		assert.equal(url, 'https://aithne.l42.eu/auth/login?next=https%3A%2F%2Faithne.l42.eu%2Fsome%2Fpage');
@@ -164,6 +164,39 @@ describe('loginUrl', () => {
 	it('drops a malformed returnUrl rather than throwing', () => {
 		const aithne = createAithneClient({ origin: 'https://aithne.l42.eu' });
 		assert.equal(aithne.loginUrl('not a url'), 'https://aithne.l42.eu/auth/login');
+	});
+
+	// ── appOrigin (lucas42/lucos_aithne_jsclient#8) ──────────────────────────
+	//
+	// Before this fix, isTrustedReturnUrl compared returnUrl against aithne's
+	// OWN origin, which a consumer's return URL practically never equals — so
+	// a dev consumer running on a non-l42.eu localhost origin could never get
+	// next= embedded, and dev login never returned to the app. appOrigin is
+	// the consumer's own origin, injected explicitly, so this case works
+	// without loosening the guard to "any localhost".
+
+	it('trusts a returnUrl matching the injected appOrigin (e.g. a dev consumer on localhost)', () => {
+		const aithne = createAithneClient({ origin: 'https://aithne.l42.eu', appOrigin: 'http://localhost:3005' });
+		const url = aithne.loginUrl('http://localhost:3005/some/page');
+		assert.match(url, /^https:\/\/aithne\.l42\.eu\/auth\/login\?next=/);
+		assert.equal(decodeURIComponent(url.split('next=')[1]), 'http://localhost:3005/some/page');
+	});
+
+	it('drops a returnUrl on a different origin than the injected appOrigin', () => {
+		const aithne = createAithneClient({ origin: 'https://aithne.l42.eu', appOrigin: 'http://localhost:3005' });
+		assert.equal(aithne.loginUrl('http://localhost:9999/evil'), 'https://aithne.l42.eu/auth/login');
+	});
+
+	it('drops a localhost returnUrl when no appOrigin is configured (opt-in, not "any localhost")', () => {
+		const aithne = createAithneClient({ origin: 'https://aithne.l42.eu' });
+		assert.equal(aithne.loginUrl('http://localhost:3005/'), 'https://aithne.l42.eu/auth/login');
+	});
+
+	it('still applies the *.l42.eu suffix rule when appOrigin is configured for a different origin', () => {
+		const aithne = createAithneClient({ origin: 'https://aithne.l42.eu', appOrigin: 'http://localhost:3005' });
+		const url = aithne.loginUrl('https://notes.l42.eu/page');
+		assert.match(url, /^https:\/\/aithne\.l42\.eu\/auth\/login\?next=/);
+		assert.equal(decodeURIComponent(url.split('next=')[1]), 'https://notes.l42.eu/page');
 	});
 });
 
