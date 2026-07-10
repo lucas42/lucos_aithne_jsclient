@@ -239,7 +239,7 @@ describe('hasScope', () => {
 	});
 });
 
-// ─── verifySession / verifyToken — classification via the _setVerifier seam ─
+// ─── verifySession / verifyToken — classification via the _verifyFn seam ────
 
 describe('verifySession / verifyToken classification', () => {
 	function makeClient(opts = {}) {
@@ -259,8 +259,7 @@ describe('verifySession / verifyToken classification', () => {
 	});
 
 	it('valid token, no gate → authorized (authenticated-only meaning), payload present', async () => {
-		const aithne = makeClient();
-		aithne._setVerifier(async () => ({ payload: { sub: '42', scopes: [] } }));
+		const aithne = makeClient({ _verifyFn: async () => ({ payload: { sub: '42', scopes: [] } }) });
 		const result = await aithne.verifySession('aithne_session=valid.jwt.token');
 		assert.equal(result.outcome, 'authorized');
 		assert.deepEqual(result.payload, { sub: '42', scopes: [] });
@@ -268,37 +267,32 @@ describe('verifySession / verifyToken classification', () => {
 	});
 
 	it('valid token + requiredScope present → authorized', async () => {
-		const aithne = makeClient();
-		aithne._setVerifier(async () => ({ payload: { sub: '42', scopes: ['notes:use'] } }));
+		const aithne = makeClient({ _verifyFn: async () => ({ payload: { sub: '42', scopes: ['notes:use'] } }) });
 		const result = await aithne.verifySession('aithne_session=t', { requiredScope: 'notes:use' });
 		assert.equal(result.outcome, 'authorized');
 	});
 
 	it('valid token + requiredScope missing → forbidden, payload still present (so consumer can log sub)', async () => {
-		const aithne = makeClient();
-		aithne._setVerifier(async () => ({ payload: { sub: '42', scopes: ['other:scope'] } }));
+		const aithne = makeClient({ _verifyFn: async () => ({ payload: { sub: '42', scopes: ['other:scope'] } }) });
 		const result = await aithne.verifySession('aithne_session=t', { requiredScope: 'notes:use' });
 		assert.equal(result.outcome, 'forbidden');
 		assert.deepEqual(result.payload, { sub: '42', scopes: ['other:scope'] });
 	});
 
 	it('valid token + authorize predicate: granted', async () => {
-		const aithne = makeClient();
-		aithne._setVerifier(async () => ({ payload: { sub: '7' } }));
+		const aithne = makeClient({ _verifyFn: async () => ({ payload: { sub: '7' } }) });
 		const result = await aithne.verifySession('aithne_session=t', { authorize: (p) => p.sub === '7' });
 		assert.equal(result.outcome, 'authorized');
 	});
 
 	it('valid token + authorize predicate: denied', async () => {
-		const aithne = makeClient();
-		aithne._setVerifier(async () => ({ payload: { sub: '7' } }));
+		const aithne = makeClient({ _verifyFn: async () => ({ payload: { sub: '7' } }) });
 		const result = await aithne.verifySession('aithne_session=t', { authorize: (p) => p.sub === '999' });
 		assert.equal(result.outcome, 'forbidden');
 	});
 
 	it('genuine JWT validation failure → unauthenticated, sanitised error present, no payload', async () => {
-		const aithne = makeClient();
-		aithne._setVerifier(async () => { throw new Error('signature verification failed'); });
+		const aithne = makeClient({ _verifyFn: async () => { throw new Error('signature verification failed'); } });
 		const result = await aithne.verifySession('aithne_session=bad.jwt');
 		assert.equal(result.outcome, 'unauthenticated');
 		assert.equal(result.payload, null);
@@ -306,8 +300,9 @@ describe('verifySession / verifyToken classification', () => {
 	});
 
 	it('JWKS infra failure (ECONNREFUSED) → unavailable, sanitised error present, no payload', async () => {
-		const aithne = makeClient();
-		aithne._setVerifier(async () => { throw Object.assign(new Error('connect ECONNREFUSED'), { code: 'ECONNREFUSED' }); });
+		const aithne = makeClient({
+			_verifyFn: async () => { throw Object.assign(new Error('connect ECONNREFUSED'), { code: 'ECONNREFUSED' }); },
+		});
 		const result = await aithne.verifySession('aithne_session=t');
 		assert.equal(result.outcome, 'unavailable');
 		assert.equal(result.payload, null);
@@ -315,26 +310,29 @@ describe('verifySession / verifyToken classification', () => {
 	});
 
 	it('JWKS infra failure via native-fetch-wrapped cause.code → unavailable', async () => {
-		const aithne = makeClient();
-		aithne._setVerifier(async () => {
-			throw new TypeError('fetch failed', { cause: Object.assign(new Error('refused'), { code: 'ECONNREFUSED' }) });
+		const aithne = makeClient({
+			_verifyFn: async () => {
+				throw new TypeError('fetch failed', { cause: Object.assign(new Error('refused'), { code: 'ECONNREFUSED' }) });
+			},
 		});
 		const result = await aithne.verifySession('aithne_session=t');
 		assert.equal(result.outcome, 'unavailable');
 	});
 
 	it('ERR_JWKS_NO_MATCHING_KEY is classified unauthenticated, not unavailable', async () => {
-		const aithne = makeClient();
-		aithne._setVerifier(async () => { throw Object.assign(new Error('no matching key found for kid "abc"'), { code: 'ERR_JWKS_NO_MATCHING_KEY' }); });
+		const aithne = makeClient({
+			_verifyFn: async () => { throw Object.assign(new Error('no matching key found for kid "abc"'), { code: 'ERR_JWKS_NO_MATCHING_KEY' }); },
+		});
 		const result = await aithne.verifySession('aithne_session=t');
 		assert.equal(result.outcome, 'unauthenticated');
 	});
 
 	it('sanitises control characters out of a kid-bearing error message before returning it', async () => {
-		const aithne = makeClient();
 		const maliciousKid = 'abc\n\x1b[31mFAKE LOG LINE\x1b[0m\x7f';
-		aithne._setVerifier(async () => {
-			throw Object.assign(new Error(`no matching key found for kid "${maliciousKid}"`), { code: 'ERR_JWKS_NO_MATCHING_KEY' });
+		const aithne = makeClient({
+			_verifyFn: async () => {
+				throw Object.assign(new Error(`no matching key found for kid "${maliciousKid}"`), { code: 'ERR_JWKS_NO_MATCHING_KEY' });
+			},
 		});
 		const result = await aithne.verifySession('aithne_session=t');
 		assert.ok(!/[\x00-\x1f\x7f]/.test(result.error.message), 'error.message must not contain control characters');
@@ -346,9 +344,10 @@ describe('verifySession / verifyToken classification', () => {
 		// when error.code is absent, or a consumer inspecting
 		// Classification.error.code on an 'unavailable' outcome produced by
 		// this shape sees undefined despite outcome correctly being 'unavailable'.
-		const aithne = makeClient();
-		aithne._setVerifier(async () => {
-			throw new TypeError('fetch failed', { cause: Object.assign(new Error('refused'), { code: 'ECONNREFUSED' }) });
+		const aithne = makeClient({
+			_verifyFn: async () => {
+				throw new TypeError('fetch failed', { cause: Object.assign(new Error('refused'), { code: 'ECONNREFUSED' }) });
+			},
 		});
 		const result = await aithne.verifySession('aithne_session=t');
 		assert.equal(result.outcome, 'unavailable');
@@ -356,8 +355,7 @@ describe('verifySession / verifyToken classification', () => {
 	});
 
 	it('verifyToken applies the identical gate semantics as verifySession (no cookie-extraction footgun)', async () => {
-		const aithne = makeClient();
-		aithne._setVerifier(async () => ({ payload: { sub: '1', scopes: [] } }));
+		const aithne = makeClient({ _verifyFn: async () => ({ payload: { sub: '1', scopes: [] } }) });
 		const result = await aithne.verifyToken('raw.jwt.token', { requiredScope: 'notes:use' });
 		assert.equal(result.outcome, 'forbidden');
 	});
@@ -369,9 +367,8 @@ describe('verifySession / verifyToken classification', () => {
 	});
 
 	it('two independently-created clients do not share verifier state', async () => {
-		const a = makeClient();
+		const a = makeClient({ _verifyFn: async () => ({ payload: { sub: 'a', scopes: [] } }) });
 		const b = makeClient();
-		a._setVerifier(async () => ({ payload: { sub: 'a', scopes: [] } }));
 		// b's real verifier is untouched — calling it with a fake token must
 		// fail (not silently reuse a's stub), proving each client instance
 		// carries independent internal state.
@@ -401,15 +398,18 @@ describe('end-to-end verification against real jose crypto', () => {
 		return { token, localJWKS };
 	}
 
-	it('a validly-signed, well-formed token verifies and authorizes', async () => {
-		const { token, localJWKS } = await makeSignedToken({ payload: { sub: '42', scopes: ['notes:use'] } });
-		const aithne = createAithneClient({ origin: 'https://aithne.l42.eu' });
-		// Bypass the network JWKS fetch with a real local key set — this still
-		// exercises jose's actual signature/issuer/audience/algorithm checks.
-		aithne._setVerifier(async (t, _jwks, opts) => {
+	// Bypass the network JWKS fetch with a real local key set — this still
+	// exercises jose's actual signature/issuer/audience/algorithm checks.
+	function verifierFor(localJWKS) {
+		return async (t, _jwks, opts) => {
 			const { jwtVerify } = await import('jose');
 			return jwtVerify(t, localJWKS, opts);
-		});
+		};
+	}
+
+	it('a validly-signed, well-formed token verifies and authorizes', async () => {
+		const { token, localJWKS } = await makeSignedToken({ payload: { sub: '42', scopes: ['notes:use'] } });
+		const aithne = createAithneClient({ origin: 'https://aithne.l42.eu', _verifyFn: verifierFor(localJWKS) });
 
 		const result = await aithne.verifySession('aithne_session=' + token, { requiredScope: 'notes:use' });
 		assert.equal(result.outcome, 'authorized');
@@ -418,11 +418,7 @@ describe('end-to-end verification against real jose crypto', () => {
 
 	it('rejects a token signed with a non-ES256 algorithm (algorithm-confusion defence)', async () => {
 		const { token, localJWKS } = await makeSignedToken({ payload: { sub: '42', scopes: [] }, alg: 'RS256' });
-		const aithne = createAithneClient({ origin: 'https://aithne.l42.eu' });
-		aithne._setVerifier(async (t, _jwks, opts) => {
-			const { jwtVerify } = await import('jose');
-			return jwtVerify(t, localJWKS, opts);
-		});
+		const aithne = createAithneClient({ origin: 'https://aithne.l42.eu', _verifyFn: verifierFor(localJWKS) });
 
 		const result = await aithne.verifySession('aithne_session=' + token);
 		assert.equal(result.outcome, 'unauthenticated');
@@ -442,11 +438,7 @@ describe('end-to-end verification against real jose crypto', () => {
 			.setExpirationTime('5m')
 			.sign(privateKey);
 
-		const aithne = createAithneClient({ origin: 'https://aithne.l42.eu' });
-		aithne._setVerifier(async (t, _jwks, opts) => {
-			const { jwtVerify } = await import('jose');
-			return jwtVerify(t, localJWKS, opts);
-		});
+		const aithne = createAithneClient({ origin: 'https://aithne.l42.eu', _verifyFn: verifierFor(localJWKS) });
 
 		const result = await aithne.verifySession('aithne_session=' + token);
 		assert.equal(result.outcome, 'unauthenticated');
@@ -464,10 +456,7 @@ describe('end-to-end verification against real jose crypto', () => {
 		const aithne = createAithneClient({
 			origin: 'https://aithne.l42.eu',
 			jwksUrl: 'http://172.17.0.1:8039/.well-known/jwks.json', // deliberately a different origin
-		});
-		aithne._setVerifier(async (t, _jwks, opts) => {
-			const { jwtVerify } = await import('jose');
-			return jwtVerify(t, localJWKS, opts);
+			_verifyFn: verifierFor(localJWKS),
 		});
 
 		const result = await aithne.verifySession('aithne_session=' + token);
@@ -491,10 +480,7 @@ describe('end-to-end verification against real jose crypto', () => {
 		const aithne = createAithneClient({
 			origin: 'https://aithne.l42.eu',
 			jwksUrl: 'http://172.17.0.1:8039/.well-known/jwks.json',
-		});
-		aithne._setVerifier(async (t, _jwks, opts) => {
-			const { jwtVerify } = await import('jose');
-			return jwtVerify(t, localJWKS, opts);
+			_verifyFn: verifierFor(localJWKS),
 		});
 
 		// If the issuer check incorrectly derived from jwksUrl instead of
