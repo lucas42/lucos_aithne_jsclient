@@ -308,6 +308,20 @@ describe('verifySession / verifyToken classification', () => {
 		assert.ok(result.error.message.includes('FAKE LOG LINE'), 'sanitisation strips control chars, not the surrounding text');
 	});
 
+	it('preserves .code on Classification.error from the native-fetch-wrapped cause.code shape', async () => {
+		// Regression test: sanitiseError() must fall back to error.cause?.code
+		// when error.code is absent, or a consumer inspecting
+		// Classification.error.code on an 'unavailable' outcome produced by
+		// this shape sees undefined despite outcome correctly being 'unavailable'.
+		const aithne = makeClient();
+		aithne._setVerifier(async () => {
+			throw new TypeError('fetch failed', { cause: Object.assign(new Error('refused'), { code: 'ECONNREFUSED' }) });
+		});
+		const result = await aithne.verifySession('aithne_session=t');
+		assert.equal(result.outcome, 'unavailable');
+		assert.equal(result.error.code, 'ECONNREFUSED');
+	});
+
 	it('verifyToken applies the identical gate semantics as verifySession (no cookie-extraction footgun)', async () => {
 		const aithne = makeClient();
 		aithne._setVerifier(async () => ({ payload: { sub: '1', scopes: [] } }));
@@ -401,6 +415,57 @@ describe('end-to-end verification against real jose crypto', () => {
 			return jwtVerify(t, localJWKS, opts);
 		});
 
+		const result = await aithne.verifySession('aithne_session=' + token);
+		assert.equal(result.outcome, 'unauthenticated');
+	});
+
+	// jwksUrl is a dev-only override for the JWKS *fetch address* — the issuer
+	// check and loginUrl() must both keep deriving from `origin`, never from
+	// jwksUrl, even when the two point at different hosts (the real dev
+	// shape: origin='https://aithne.l42.eu', jwksUrl='http://172.17.0.1:.../.well-known/jwks.json').
+	// This is called out as a security property, not a convenience, in both
+	// the ADR and the JSDoc — these two tests are its regression coverage.
+
+	it('issuer check derives from origin, not jwksUrl, when a token has the configured origin as issuer', async () => {
+		const { token, localJWKS } = await makeSignedToken({ payload: { sub: '1', scopes: [] } }); // issuer: https://aithne.l42.eu
+		const aithne = createAithneClient({
+			origin: 'https://aithne.l42.eu',
+			jwksUrl: 'http://172.17.0.1:8039/.well-known/jwks.json', // deliberately a different origin
+		});
+		aithne._setVerifier(async (t, _jwks, opts) => {
+			const { jwtVerify } = await import('jose');
+			return jwtVerify(t, localJWKS, opts);
+		});
+
+		const result = await aithne.verifySession('aithne_session=' + token);
+		assert.equal(result.outcome, 'authorized');
+	});
+
+	it('rejects a token issued with the jwksUrl origin as issuer — proves the check does not use jwksUrl', async () => {
+		const { privateKey, publicKey } = await generateKeyPair('ES256', { extractable: true });
+		const jwk = await exportJWK(publicKey);
+		jwk.kid = 'k1';
+		jwk.alg = 'ES256';
+		const localJWKS = createLocalJWKSet({ keys: [jwk] });
+		const token = await new SignJWT({ sub: '1', scopes: [] })
+			.setProtectedHeader({ alg: 'ES256', kid: 'k1' })
+			.setIssuedAt()
+			.setIssuer('http://172.17.0.1:8039') // matches jwksUrl's origin, NOT the configured origin
+			.setAudience('l42.eu')
+			.setExpirationTime('5m')
+			.sign(privateKey);
+
+		const aithne = createAithneClient({
+			origin: 'https://aithne.l42.eu',
+			jwksUrl: 'http://172.17.0.1:8039/.well-known/jwks.json',
+		});
+		aithne._setVerifier(async (t, _jwks, opts) => {
+			const { jwtVerify } = await import('jose');
+			return jwtVerify(t, localJWKS, opts);
+		});
+
+		// If the issuer check incorrectly derived from jwksUrl instead of
+		// origin, this token would verify. It must not.
 		const result = await aithne.verifySession('aithne_session=' + token);
 		assert.equal(result.outcome, 'unauthenticated');
 	});

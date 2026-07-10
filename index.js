@@ -22,11 +22,18 @@ function sanitiseMessage(message) {
  * Build a sanitised Error safe to log or surface on Classification.error.
  * Preserves name/code (useful for a consumer's own logging) but never the
  * raw, unsanitised message.
+ *
+ * Falls back to error.cause?.code when error.code is absent — the same
+ * native-fetch-wrapped shape isJWKSInfraError() checks (bug #1). Without
+ * this fallback, a consumer inspecting Classification.error.code on an
+ * 'unavailable' outcome produced by that shape would see undefined even
+ * though the classification correctly identified it as a JWKS infra error.
  */
 function sanitiseError(error) {
 	const safe = new Error(sanitiseMessage(error?.message));
 	if (error?.name) safe.name = error.name;
-	if (error?.code) safe.code = error.code;
+	const code = error?.code ?? error?.cause?.code;
+	if (code) safe.code = code;
 	return safe;
 }
 
