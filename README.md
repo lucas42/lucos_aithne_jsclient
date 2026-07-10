@@ -23,6 +23,7 @@ import { createAithneClient } from 'lucos_aithne_jsclient';
 const aithne = createAithneClient({
   origin:      process.env.AITHNE_ORIGIN,   // default 'https://aithne.l42.eu'
   jwksUrl:     process.env.AITHNE_JWKS_URL, // optional dev override (JWKS fetch address only)
+  appOrigin:   process.env.APP_ORIGIN,      // this consumer's own origin — trusted as a loginUrl() return target
   environment: process.env.ENVIRONMENT,     // gates the dev-only render-ui bypass
 });
 
@@ -42,7 +43,7 @@ app.use(async (req, res, next) => {
       return res.status(403).render('forbidden', { requiredScope: 'notes:use' });
     case 'unauthenticated':
       // No token, or a genuine validation failure — redirect to login.
-      return res.redirect(302, aithne.loginUrl(`${appOrigin}${req.originalUrl}`));
+      return res.redirect(302, aithne.loginUrl(`${process.env.APP_ORIGIN}${req.originalUrl}`));
     case 'unavailable':
       // aithne itself is unreachable — do NOT redirect into a dead aithne.
       // Render your own local "sign-in unavailable" page instead.
