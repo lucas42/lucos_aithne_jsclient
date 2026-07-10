@@ -163,6 +163,12 @@ function isTrustedReturnUrl(returnUrl, appOrigin) {
  *   environment              gates the dev-only render-ui scope bypass; the
  *                            library never reads process.env itself
  *   logger                  default console
+ *   _verifyFn                internal, undocumented test seam — overrides the
+ *                            jose jwtVerify call so unit tests don't need a
+ *                            live JWKS endpoint. Construction-time only: there
+ *                            is no post-construction setter, so a client
+ *                            instance's verify function can never be swapped
+ *                            after creation (lucas42/lucos_aithne_jsclient#7).
  */
 export function createAithneClient(config = {}) {
 	const origin = config.origin ?? 'https://aithne.l42.eu';
@@ -176,9 +182,9 @@ export function createAithneClient(config = {}) {
 
 	const JWKS = createServeStaleJWKS(createRemoteJWKSet(jwksUrl), { logger });
 
-	// Internal verify function — replaced in tests via _setVerifier so unit
-	// tests never need a live JWKS endpoint.
-	let _verifyFn = (token, jwks, opts) => jwtVerify(token, jwks, opts);
+	// Internal verify function — overridable only at construction time via
+	// config._verifyFn (see JSDoc above), never afterward.
+	const _verifyFn = config._verifyFn ?? ((token, jwks, opts) => jwtVerify(token, jwks, opts));
 
 	function hasScope(payload, requiredScope) {
 		const scopes = payload?.scopes ?? [];
@@ -260,16 +266,11 @@ export function createAithneClient(config = {}) {
 		return `${origin}/auth/login`;
 	}
 
-	function _setVerifier(fn) {
-		_verifyFn = fn;
-	}
-
 	return {
 		verifySession,
 		verifyToken,
 		hasScope,
 		parseCookies,
 		loginUrl,
-		_setVerifier,
 	};
 }

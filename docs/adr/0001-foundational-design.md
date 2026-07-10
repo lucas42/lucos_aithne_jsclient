@@ -140,7 +140,7 @@ Today all four consumers collapse `unavailable` into `unauthenticated` and redir
 
 - **A library does NOT make a fix instantly estate-live.** A security fix is live only once every consumer bumps the version and redeploys — the same N-place redeploy as today, minus the code edit. The mitigation is real but partial: the error-prone part (the code change) becomes single-point, and the version bump is mechanical and dependabot-automatable. The release-coupling must be owned, not wished away.
 - **New moving parts:** a repo, its CI, an npm publish pipeline, dependabot, semver discipline, and four migration PRs. Justified here by four existing consumers, more JS-behind-aithne services likely, security-criticality, and the low overhead the `lucos_navbar` precedent demonstrates — but it would **not** be justified at one or two consumers.
-- **A shared library is a shared blast radius.** A defect published to the one package reaches every consumer that upgrades. Mitigated by the test seam (`_setVerifier`, fake-remote-JWKS unit tests carried over from the current modules), ES256 pinning, and staged rollout via independent consumer version bumps.
+- **A shared library is a shared blast radius.** A defect published to the one package reaches every consumer that upgrades. Mitigated by the test seam (`_verifyFn`, fake-remote-JWKS unit tests carried over from the current modules — Amendment 2026-07-10, lucas42/lucos_aithne_jsclient#7: injected only at construction time via `createAithneClient(config)`, replacing an earlier runtime `_setVerifier(fn)` setter per security's #6 review, so a client's verify function can never be swapped after creation), ES256 pinning, and staged rollout via independent consumer version bumps.
 
 ## Alternatives considered
 
