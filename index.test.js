@@ -239,6 +239,27 @@ describe('hasScope', () => {
 	});
 });
 
+// ─── client API surface — construction-time-only _verifyFn (lucas42/lucos_aithne_jsclient#7/#13) ─
+//
+// Regression guard for the property #7 introduced: a client instance must
+// expose no way to swap its verify function after construction. Without this
+// test, a future change that reintroduced a runtime setter (e.g. a re-added
+// _setVerifier, or any other method that mutates the internal verify
+// function) would pass every other test in this file — none of them assert
+// on the *shape* of the returned client object, only on its behaviour.
+
+describe('client API surface', () => {
+	it('exposes no runtime verifier setter — _verifyFn is construction-time-only', () => {
+		const aithne = createAithneClient({ origin: 'https://aithne.l42.eu' });
+		assert.equal('_setVerifier' in aithne, false, 'client must not expose _setVerifier or any other runtime verifier setter');
+		assert.deepEqual(
+			Object.keys(aithne).sort(),
+			['hasScope', 'loginUrl', 'parseCookies', 'verifySession', 'verifyToken'],
+			'client object must expose exactly its documented public methods — no additional (e.g. setter) surface'
+		);
+	});
+});
+
 // ─── verifySession / verifyToken — classification via the _verifyFn seam ────
 
 describe('verifySession / verifyToken classification', () => {
