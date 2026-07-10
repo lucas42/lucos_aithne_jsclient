@@ -2,11 +2,27 @@ version: 2.1
 orbs:
   lucos: lucos/deploy@0
 
+jobs:
+  test:
+    docker:
+      - image: cimg/node:22.11
+    steps:
+      - checkout
+      - run:
+          name: Install dependencies
+          command: npm ci
+      - run:
+          name: Run tests
+          command: npm test
+
 workflows:
   version: 2
-  release:
+  test-and-release:
     jobs:
+      - test
       - lucos/release-npm:
+          requires:
+            - test
           filters:
             branches:
               only: main

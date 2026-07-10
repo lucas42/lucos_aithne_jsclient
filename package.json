@@ -4,8 +4,11 @@
   "description": "Javascript library for clients of lucos_aithne",
   "type": "module",
   "main": "index.js",
+  "files": [
+    "index.js"
+  ],
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "node --test"
   },
   "repository": {
     "type": "git",
@@ -20,5 +23,8 @@
   "bugs": {
     "url": "https://github.com/lucas42/lucos_aithne_jsclient/issues"
   },
-  "homepage": "https://github.com/lucas42/lucos_aithne_jsclient"
+  "homepage": "https://github.com/lucas42/lucos_aithne_jsclient",
+  "dependencies": {
+    "jose": "^6.2.3"
+  }
 }
