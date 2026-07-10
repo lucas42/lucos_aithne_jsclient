@@ -1,0 +1,12 @@
+version: 2.1
+orbs:
+  lucos: lucos/deploy@0
+
+workflows:
+  version: 2
+  release:
+    jobs:
+      - lucos/release-npm:
+          filters:
+            branches:
+              only: main

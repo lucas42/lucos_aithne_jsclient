@@ -1,0 +1,24 @@
+{
+  "name": "lucos_aithne_jsclient",
+  "version": "0.0.0",
+  "description": "Javascript library for clients of lucos_aithne",
+  "type": "module",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/lucas42/lucos_aithne_jsclient"
+  },
+  "keywords": [
+    "aithne",
+    "auth",
+    "jwt"
+  ],
+  "author": "Luke Blaney",
+  "bugs": {
+    "url": "https://github.com/lucas42/lucos_aithne_jsclient/issues"
+  },
+  "homepage": "https://github.com/lucas42/lucos_aithne_jsclient"
+}

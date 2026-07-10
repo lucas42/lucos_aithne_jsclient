@@ -1,0 +1,12 @@
+name: Convention check
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  convention-check:
+    uses: lucas42/.github/.github/workflows/reusable-convention-check.yml@v1.21.0
